@@ -1,0 +1,61 @@
+/// Auth service protocol definition.
+///
+/// Defines the [AuthService] gRPC service with all RPC methods used by the
+/// application. Each RPC maps a request message to a response message.
+///
+/// To regenerate the Dart stubs after editing this file, run:
+/// ```bash
+/// make proto
+/// ```
+///
+/// File: protos/auth.proto
+syntax = "proto3";
+
+package bx;
+
+// ---------------------------------------------------------------------------
+// Imports
+// ---------------------------------------------------------------------------
+
+// Standard protobuf well-known types for timestamps and durations.
+// These are resolved from the protoc include path at compile time.
+import "google/protobuf/timestamp.proto";
+
+// ---------------------------------------------------------------------------
+// Request / Response messages
+// ---------------------------------------------------------------------------
+
+/// Request payload for user login.
+message LoginRequest {
+  string phone = 1;
+  string otp   = 2;
+}
+
+/// Success response returned after a successful login.
+message LoginResponse {
+  string access_token  = 1;
+  string refresh_token = 2;
+  string user_id       = 3;
+  string name          = 4;
+  string email         = 5;
+  // The time at which this token expires, as a Unix timestamp.
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+/// Generic paged response envelope used across services.
+message Pagination {
+  int32 page     = 1;
+  int32 limit    = 2;
+  int32 total    = 3;
+  int32 pages    = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Service definitions
+// ---------------------------------------------------------------------------
+
+/// Authentication service — handles login and token refresh.
+service AuthService {
+  /// Authenticates a user with phone + OTP and returns tokens.
+  rpc Login(LoginRequest) returns (LoginResponse);
+}
