@@ -1,7 +1,7 @@
 # base Build Makefile
 # Provides targets for localization, proto code generation and clean builds.
 
-.PHONY: help l10n proto clean pub-get
+.PHONY: help l10n proto proto-single clean pub-get
 
 help: ## Display this help message
 	@echo "base Build System"
@@ -11,7 +11,8 @@ help: ## Display this help message
 	@echo "Targets:"
 	@echo "  help                    Show this help message"
 	@echo "  l10n                    Generate localization files from ARB"
-	@echo "  proto                   Generate Dart code from .proto files"
+	@echo "  proto                   Generate Dart code from all .proto files"
+	@echo "  proto-single FILE=x     Generate Dart code from a single proto file"
 	@echo "  clean                   Clean build artifacts"
 	@echo "  pub-get                 Run flutter pub get"
 	@echo ""
@@ -41,7 +42,7 @@ l10n: ## Generate localization files from ARB
 # Protocol Buffers / gRPC code generation
 # ---------------------------------------------------------------------------
 .PHONY: proto
-proto: ## Generate Dart code from .proto files in protos/
+proto: ## Generate Dart code from all .proto files in protos/
 	@echo "Generating Dart code from proto files..."
 	@if [ ! -d "protos" ]; then \
 		echo "ERROR: protos/ directory not found"; \
@@ -51,21 +52,43 @@ proto: ## Generate Dart code from .proto files in protos/
 		echo "ERROR: No .proto files found in protos/"; \
 		exit 1; \
 	fi
-	@# Create the output directory for generated code
-	mkdir -p lib/core/network/generated
-	@# Determine the protoc include path for standard .proto files.
-	@# Homebrew installs them under /opt/homebrew/include (Apple Silicon)
-	@# or /usr/local/include (Intel). Fallback to empty if not found.
-	PROTO_INC=$$(ls -d /opt/homebrew/Cellar/protobuf/*/include 2>/dev/null | head -1); \
-	if [ -z "$$PROTO_INC" ]; then PROTO_INC=$$(ls -d /usr/local/include 2>/dev/null | head -1); fi; \
-	for proto_file in protos/*.proto; do \
-		echo "  Generating from $$proto_file ..."; \
-		protoc --dart_out=grpc:lib/core/network/generated \
-			-I protos \
-			$(if $$PROTO_INC,-I $$PROTO_INC,) \
-			$$proto_file; \
-	done
+	@bash scripts/gen_proto.sh
 	@echo "✓ Proto files generated in lib/core/network/generated/"
+
+# Generate from a specific proto file
+# Usage: make proto-single FILE=protos/my_service.proto
+.PHONY: proto-single
+proto-single:
+	@echo "Generating Dart code from: $(FILE)"
+	@if [ -z "$(FILE)" ]; then \
+		echo "ERROR: Please specify FILE=protos/your.proto"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(FILE)" ]; then \
+		echo "ERROR: File not found: $(FILE)"; \
+		exit 1; \
+	fi
+	@mkdir -p lib/core/network/generated
+	@PROTO_INC=$$(ls -d /opt/homebrew/Cellar/protobuf/*/include 2>/dev/null | head -1); \
+	if [ -z "$$PROTO_INC" ]; then PROTO_INC=$$(ls -d /usr/local/include 2>/dev/null | head -1); fi; \
+	protoc --dart_out=grpc:lib/core/network/generated \
+		-I protos \
+		$(if $$PROTO_INC,-I $$PROTO_INC,) \
+		$(FILE)
+	@echo "✓ Generated: $(FILE)"
+	@# Generate well-known types if the file imports them
+	@if grep -q "google/protobuf/timestamp.proto\|google/protobuf/duration.proto" "$(FILE)"; then \
+		if [ -n "$$PROTO_INC" ]; then \
+			for wkt in timestamp empty duration; do \
+				if [ -f "$$PROTO_INC/google/protobuf/$${wkt}.proto" ]; then \
+					protoc --dart_out=grpc:lib/core/network/generated \
+						-I $$PROTO_INC \
+						$$PROTO_INC/google/protobuf/$${wkt}.proto; \
+					echo "  ✓ Generated well-known type: $${wkt}"; \
+				fi; \
+			done; \
+		fi; \
+	fi
 
 # ---------------------------------------------------------------------------
 # pub get
